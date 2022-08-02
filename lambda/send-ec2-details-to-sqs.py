@@ -27,36 +27,38 @@ INSTANCE_AD_TAG = os.getenv("INSTANCE_AD_TAG")
 INSTANCE_TAG_VALUE = os.getenv("INSTANCE_TAG_VALUE")
 
 def lambda_handler(event, context):
-  print(event)
-  try:
-     ec2_client = boto3.client('ec2')
-     instance_id = event['detail']['instance-id']
-     instance_state = event['detail']['state']
-     print(instance_id)
-     print(instance_state)   
-     var = ec2_client.describe_instances(Filters=[{'Name': 'tag:JoinAD','Values': [INSTANCE_TAG_VALUE]}, {'Name': 'instance-id','Values': [instance_id]}]).get('Reservations', '')
-     testcount = sum([[i for i in r['Instances']] for r in var], [])
+    print(event)
+    try:
+        ec2_client = boto3.client('ec2')
+        instance_id = event['detail']['instance-id']
+        instance_state = event['detail']['state']
+        print(instance_id)
+        print(instance_state)
+        var = ec2_client.describe_instances(Filters=[{'Name': 'tag:JoinAD','Values': [INSTANCE_TAG_VALUE]}, {'Name': 'instance-id','Values': [instance_id]}]).get('Reservations', '')
+        testcount = sum((list(r['Instances']) for r in var), [])
 
-     if format(len(testcount)) == '1':
-	     if instance_state == 'terminated':
-	        privateIP = 'none'
-	     else:
-	        privateIP = var[0]['Instances'][0]['PrivateIpAddress']
-	        print(privateIP)
-	     data = {}
-	     data['instanceId'] = instance_id
-	     data['privateIp'] = privateIP
-	     data['instance_state'] = instance_state
-	     json_data = json.dumps(data)
-	     print(json_data)
-	     QUEUE_NAME = os.getenv("QUEUE_NAME")
-	     SQS = boto3.client("sqs")
-	     q = SQS.get_queue_url(QueueName=QUEUE_NAME).get('QueueUrl')
-	     print(q)
-	     resp = SQS.send_message(QueueUrl=q, MessageBody=json_data)
-     else:
+        if format(len(testcount)) == '1':
+            if instance_state == 'terminated':
+               privateIP = 'none'
+            else:
+               privateIP = var[0]['Instances'][0]['PrivateIpAddress']
+               print(privateIP)
+            data = {
+                'instanceId': instance_id,
+                'privateIp': privateIP,
+                'instance_state': instance_state,
+            }
+
+            json_data = json.dumps(data)
+            print(json_data)
+            QUEUE_NAME = os.getenv("QUEUE_NAME")
+            SQS = boto3.client("sqs")
+            q = SQS.get_queue_url(QueueName=QUEUE_NAME).get('QueueUrl')
+            print(q)
+            resp = SQS.send_message(QueueUrl=q, MessageBody=json_data)
+        else:
             print('no result, check request parameters')
-  except botocore.exceptions.ClientError as e:
-		       log("Error sending message to the SQS queue {}".format(e.response['Error'])) 				
+    except botocore.exceptions.ClientError as e:
+        log(f"Error sending message to the SQS queue {e.response['Error']}") 				
 def log(error):
-    print('{}Z {}'.format(datetime.utcnow().isoformat(), error))				
+    print(f'{datetime.utcnow().isoformat()}Z {error}')				
